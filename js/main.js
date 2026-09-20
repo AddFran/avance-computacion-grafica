@@ -1,169 +1,202 @@
-// En el HTML:
-//  <canvas> se trata de un elemento que permite dibujar graficos mediante JS 
-//  Es el lienzo en blanco donde se renderizaran los graficos 3D usando WebGL
+// Paso 3: Transformaciones matriciales en 2D 
+// Ahora dejamos de dibujar nuestro triangulo fijo y le damos el poder de moverse o transformase matematicamente
 
-
-// Obtiene del documento HTML el elemento <canvas> cuyo id es "glCanvas"
-const canvas = document.getElementById("glCanvas"); 
-    // La variable "canvas" es una referencia al elemento con el id "glCanvas"
-    // Buscamos en todo el documento la variable con el id "glCanvas"
-    // "canvas" contiene el lienzo donde dibujaremos las graficos usando WebGL 2
-
-// Solicita al navegador un contexto de renderizado WebGL 2 para poder dibujar gráficos 3D.
+// Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
+const canvas = document.getElementById("glCanvas"); 2
 const gl = canvas.getContext("webgl2");
-    // Un contexto es un conjunto de funciones y propiedades que nos permiten dibujar en el canvas
-    // Aqui solicitamos un contexto preparado para trabajar con WebGL 2
-    // Con getContext("webgl2") le decimos al navegador que usaremos WebGL 2 para renderizar graficos en el canvas
-        // Aparte de webgl2 podemos usar otros tipos de contexto como 2d, webgl, 3d, etc
-    // Basicamente, "gl" es el objeto que nos permitira interactuar con WebGL 2 y dibujar en el canvas
 
-// Verifica si el navegador soporta WebGL2 y si el contexto fue creado correctamente
-if (!gl) {
-    // Si no hay soporte para WebGL2, "gl" almacena null, por ende se detiene la ejecución mostrando un error
+if (!gl){
     throw new Error("WebGL2 no está disponible en este navegador.");
 }
 
-// Define el área del canvas donde WebGL dibujara
-// Los parámetros son: x, y, ancho y alto del viewport
 gl.viewport(0, 0, canvas.width, canvas.height);
-    // El viewport es el area rectangular del canvas donde se rederizaran los graficos
+gl.clearColor(0.0, 0.0, 0.0, 1.0);
+// gl.clear(gl.COLOR_BUFFER_BIT); Por ahora solo definimos el color con el que se limpiara el buffer color, mas o aplicamos el cambio 
 
-// Aqui entramos en territorio del framebuffer (color buffer, depth buffer y stencil buffer)
-gl.clearColor(0.0, 0.0, 0.0, 1.0); // Indicamos el color con el cual limpiaremos el color buffer (ojo que todavia no se limpia)
-gl.clear(gl.COLOR_BUFFER_BIT); // Limpia el color buffer con el color previamente definido en clearColor
-
-
-
-// En este punto, el canvas se ha limpiado y ahora esta listo para dibujar graficos usando WebGL 2
-
-
-// Definimos los vertices (x,y) de nuestra figura (un triangulo) en un arreglo del tipo Float32Array
-// Estos vectores estan normalizados, cada valor esta en un valor entre -1 (limite izquierdo e inferior) y 1 (limite derecho y superior)
-// Este sistema de vectores NDC (Normalized Device Coordinates) es el usado por Vertex Shader
 const vertices = new Float32Array([
     0.0,  0.7,   
     -0.7, -0.7,  
     0.7, -0.7  
 ]);
-// Extra, estos datos deben ser flotantes de 32 bits porque la GPU trabaja con este tipo de datos
 
-// Creamos el vertex buffer (buffer de vertices) y lo llenamos con los datos de los vertices que definimos antes
 const vertexBuffer = gl.createBuffer();
-    // No hay datos, solo es un buffer vacio, solo reservamos espacio en la GPU
 gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    // Con bindBuffer le decimos a WebGL que cuando trqabajemos con ARRAY_BUFFER usaremos el buffer que acabamos de crear (vertexBuffer)
-    // Toda operacion que hagamos con ARRAY_BUFFER afectara a vertexBuffer
-    // ARRAY_BUFFER es un tipo de buffer que almacena datos de vertices (posiciones, colores, normales, etc)
 gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    // Aqui llenamos nuestro ARRAY_BUFFER (vertexBuffer) con los datos del array que definimos antes (vertices)
-    // STATIC_DRAW indica que los datos (vertices en este caso) nunca cambiaran
-        // DYNAMIC_DRAW indica que los datos cambiaran ocasionalmente
-        // STREAM_DRAW indica que los datos cambiaran constantemente
 
 
-// IMPORTANTE: Los shaders son programas que se ejecutan en la GPU, no en la CPU. Por eso se escriben en GLSL y no en JS
-    // Su trabajo es procesar datos graficos de forma masiva y en paralelo
-
-// Aqui ya aparece GLSL (OpenGL Shading Language), el lenguaje de shaders que usaremos para programar la GPU
-// Es aqui, basicamente pasamos de tener vectores en 2D a tener vectores en 4D que es lo que la GPU necesita para trabajar
+// Hacemos un cambio importante en el vertexShader, osea, cada vez que procesemos un vertice...
 const vertexShaderSource = `#version 300 es
-// Recibe la posición de cada vértice desde el programa JavaScript.
-in vec2 aPosition;
-    // Como estamos trabajando con tres vertices, aPosition recibira 3 veces los valores de los vertice que definimos antes (0.0, 0.7), (-0.7, -0.7) y (0.7, -0.7)
 
+// Aparte de recibir la posición de cada vértice...
+in vec2 aPosition;
+
+// Ahora recibimos una matriz de transformacion
+uniform mat3 uModelMatrix;
+    // uniform es una variable que tiene el mismo valor para cada vertice 
+
+// Ya no pasamos directamente los vertices recibidos a un vector 4d para webgl, debemos transformarlo primero...
 void main() {
-    // Convierte la posición 2D en un vector 4D requerido por WebGL.
-    gl_Position = vec4(aPosition, 0.0, 1.0);
-        // gl_Position es una variable especial que indica la posición final del vértice en el espacio de recorte (clip space)
-        // El espacio de recorte es un sistema de coordenadas normalizado donde los valores van de -1 a 1 en x, y, y z
-        // Es un vector de 4 dimensiones donde x, y y z son las coordenadas y w es un valor de homogeneización que normalmente se establece en 1.0
+
+    // Convierte el vertice recibido (x,y) en coordenadas homogeneas (x,y,1)    
+    vec3 posicionLocal = vec3(aPosition, 1.0);
+        // Esto nos permite aplicar las transformaciones usando multiplicacion matricial
+
+    // Aplicamos la transformacion correspondiente
+    vec3 posicionTransformada = uModelMatrix * posicionLocal;
+        // Lo hacemos a traves de una multiplicacion
+
+    // Una vez aplicada la transformacion podemos enviar el resultado
+    gl_Position = vec4(posicionTransformada.xy,0.0,1.0);
 }
 `;
 
-// Con los vectices ya definimos, ahora definimos el fragment shader que nos permitira darle color a nuestro triangulo
-// A diferencia del otro, este se ejecuta por cada pixel (fragmento... fragment xd) que se renderiza en la pantalla
+// Nuestro fragmentShader se mantiene igual
 const fragmentShaderSource = `#version 300 es
-// Define la precisión de los cálculos en punto flotante
 precision highp float;
-
-// Variable de salida con el color final del fragmento
 out vec4 outColor;
 
 void main() {
-    // Asigna un color amarillo/anaranjado opaco.
     outColor = vec4(1.0, 0.75, 0.1, 1.0);
 }
 `;
 
-
-// Funcion que crea un shader (vertex o fragment) a partir del código fuente proporcionado
-// Basicamente, JS le pasa a la GPU el codigo fuente del shader y la GPU lo compila para poder usarlo
+// La compilacion de shaders se mantiene igual
 function crearShader(gl, tipo, codigoFuente) {
-    const shader = gl.createShader(tipo);   // Crea un shader vacio del tipo especificado (vertex o fragment)
-    gl.shaderSource(shader, codigoFuente);  // Le asigna el codigo fuente al shader
-    gl.compileShader(shader);               // La GPU compila el shader, convierte el codigo en un programa ejecutable que la GPU puede usar
-
-    // Verifica si la compilacion fue exitosa
+    const shader = gl.createShader(tipo);   
+    gl.shaderSource(shader, codigoFuente);  
+    gl.compileShader(shader);               
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
         const error = gl.getShaderInfoLog(shader);
         gl.deleteShader(shader);
-        throw new Error("Error al compilar shader:\n" + error); // Bastante util para depurar
+        throw new Error("Error al compilar shader:\n" + error);
     }
     return shader;
 }
 
-// Usamos la funcion crearShader para crear tanto el vertex shader como el fragment shader a partir del codigo fuente que definimos antes
 const vertexShader = crearShader(gl,gl.VERTEX_SHADER,vertexShaderSource);
 const fragmentShader = crearShader(gl,gl.FRAGMENT_SHADER,fragmentShaderSource);
 
-// Creamos el programa de shaders
 const program = gl.createProgram();
-gl.attachShader(program, vertexShader);     // Enlazamos el vertex shader al programa
-gl.attachShader(program, fragmentShader);   // Enlazamos el fragment shader al programa
-gl.linkProgram(program);                    // La GPU enlaza los shaders en un programa ejecutable que puede ser usado para renderizar
+gl.attachShader(program, vertexShader);     
+gl.attachShader(program, fragmentShader);   
+gl.linkProgram(program);                   
 
-// Verificamos si el programa se enlaza correctamente
 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     throw new Error(
         "Error al enlazar programa:\n" + gl.getProgramInfoLog(program)
     );
 }
 
-
-
-// VAO (Verfex Array Object) es un objeto que almacena el estado de los atributos de los vertices
+// VAO se mantiene igual
 const vao = gl.createVertexArray();
-    // No guarda vertices (como el vertex buffer), guarda la configuracion de como deben ser interpretados los vertices
 
 gl.bindVertexArray(vao);
-    // Con bindVertexArray le decimos a WebGL que cuando trabajemos con VAO usaremos el VAO que acabamos de crear (vao)
 gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    // Con bindBuffer le decimos a WebGL que cuando trabajemos con ARRAY_BUFFER usaremos el buffer que acabamos de crear (vertexBuffer)
-
 const positionLocation = gl.getAttribLocation(program, "aPosition");
-    // Buscamos la variable "aPosition" en el vertex shader y obtenemos su ubicacion para poder pasarle los datos de los vertices desde JS
-    // getAttribLocation() traduce el nombre "aPosition" al índice interno que usa la GPU
+gl.enableVertexAttribArray(positionLocation); 
 
-gl.enableVertexAttribArray(positionLocation); // Habilitamos el atributo de posicion para que la GPU pueda usarlo
-
-// Indicamos a la GPU como debe interpretar los datos del buffer de vertices para el atributo de posicion
 gl.vertexAttribPointer(
-    positionLocation, // Indicamos el atributo de posicion que estamos configurando (la variable aPosition leera estos datos)
-    2,                // Tamanio del atributo, cada vertice tiene 2 componentes (x,y)
-    gl.FLOAT,         // Cada componente es un float de 32 bits
-    false,            // Normalizacion
-    0,                // Stride (espaciado entre vertices), 0 significa que los vertices estan contiguos
-    0                 // Offset (desplazamiento desde el inicio del buffer), 0 significa que empezamos desde el primer vertice
+    positionLocation,
+    2,              
+    gl.FLOAT,      
+    false,          
+    0,            
+    0              
 );
 
-gl.useProgram(program);     // Le decimos a WebGL que use el programa de shaders que acabamos de crear para renderizar
-gl.bindVertexArray(vao);    // Le decimos a WebGL que use el VAO que acabamos de crear para renderizar
-    // Porque aparece dos veces
-    // Antes lo configuramos, ahora le decimos que lo use para renderizar
+// Aqui aparece la magia, las transformaciones, cada una permite realizar una transformacion sobre nuestro objeto
 
-// Finalmente, dibujamos el triangulo usando los datos de los vertices y el programa de shaders
-gl.drawArrays(
-    gl.TRIANGLES, // Modo de dibujo, en este caso dibujaremos triangulos
-    0,            // Indice inicial, empezamos desde el primer vertice
-    3             // Numero de vertices a dibujar, en este caso 3 vertices forman un triangulo
+// Identidad, no hace ningun cambio (xd)
+function matrizIdentidad() {
+    return new Float32Array([
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    ]);
+}
+
+// Traslacion, mueve todo objeto (todos los vertices)
+    // Si tx = 0.3, el triangulo se desplaza a la derecha
+    // Si ty = 0.1, el triangulo se desplaza hacia arriba
+function matrizTraslacion(tx, ty) {
+    return new Float32Array([
+        1,  0, 0,
+        0,  1, 0,
+        tx, ty, 1
+    ]);
+}
+    
+// Rotacion, gira alrededor del origen
+    // Ojo, rota alrededor del 0,0, no alrededor del centro del canvas
+function matrizRotacion(anguloRadianes) {
+    const c=Math.cos(anguloRadianes);
+    const s=Math.sin(anguloRadianes);
+
+    return new Float32Array([
+         c, s, 0,
+        -s, c, 0,
+         0, 0, 1
+    ]);
+}
+
+// Escala, cambia el tamanio
+    // sx para controlar el ancho
+    // sy para controlar el alto
+function matrizEscala(sx, sy) { // 
+    return new Float32Array([
+        sx, 0,  0,
+        0,  sy, 0,
+        0,  0,  1
+    ]);
+}
+
+// Multipllicacion, para combinar transformaciones en una sola matriz
+function multiplicarMat3(a,b){
+    const resultado=new Float32Array(9);
+    for(let columna=0;columna<3;columna++){
+        for(let fila=0;fila<3;fila++){
+            let suma=0;
+            for(let k=0;k<3;k++){
+                suma+=a[k*3+fila]*b[columna*3+k];
+            }
+            resultado[columna*3+fila]=suma;
+        }
+    }
+    return resultado;
+}
+
+// Aplicamos las transformaciones
+
+// Desplazamiento
+const tx = 0.30;
+const ty = 0.10;
+// Giro
+const anguloGrados = 35;
+const anguloRadianes = anguloGrados * Math.PI / 180;
+// Escala
+const sx = 1.20;
+const sy = 0.80;
+
+const T = matrizTraslacion(tx, ty);
+const R = matrizRotacion(anguloRadianes);
+const S = matrizEscala(sx, sy);
+const RS = multiplicarMat3(R, S);
+// Todas las transformaciones juntas en una matriz
+const modelMatrix = multiplicarMat3(T, RS);
+
+// Creamos el programa
+gl.useProgram(program);     
+
+// Busca dentro de shader donde vive el uniform y obtiene su "direccion"
+const modelMatrixLocation = gl.getUniformLocation(program, "uModelMatrix");
+
+// Luego lo envia
+gl.uniformMatrix3fv(
+    modelMatrixLocation,    // Uniform que recibira los datos
+    false,                  // No transpone la matriz
+    modelMatrix             // Matriz con todas las transformaciones que preparamos
 );
+
+gl.clear(gl.COLOR_BUFFER_BIT);      // Limpiamos el canvas
+gl.bindVertexArray(vao);            // Activamos la configuracion VAO
+gl.drawArrays(gl.TRIANGLES,0,3);    // Dibujamos el triangulo
