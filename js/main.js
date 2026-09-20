@@ -1,17 +1,17 @@
-// Paso 3: Transformaciones matriciales en 2D 
-// Ahora dejamos de dibujar nuestro triangulo fijo y le damos el poder de moverse o transformase matematicamente
+// Paso 4: Animacion y Render Loop 
+// En el anterior paso vimos como podemos traslador y mover un objeto,
+// ahora aplicaremos esas transforamaciones de forma continua para formar una animacion hecha y derecha.
 
 // Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
-const canvas = document.getElementById("glCanvas"); 2
-const gl = canvas.getContext("webgl2");
+const canvas=document.getElementById("glCanvas"); 
+const gl=canvas.getContext("webgl2");
 
-if (!gl){
+if(!gl){
     throw new Error("WebGL2 no está disponible en este navegador.");
 }
 
-gl.viewport(0, 0, canvas.width, canvas.height);
-gl.clearColor(0.0, 0.0, 0.0, 1.0);
-// gl.clear(gl.COLOR_BUFFER_BIT); Por ahora solo definimos el color con el que se limpiara el buffer color, mas o aplicamos el cambio 
+gl.viewport(0,0,canvas.width,canvas.height);
+gl.clearColor(0.0, 0.0, 0.0, 1.0); 
 
 const vertices = new Float32Array([
     0.0,  0.7,   
@@ -23,34 +23,16 @@ const vertexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
 
-
-// Hacemos un cambio importante en el vertexShader, osea, cada vez que procesemos un vertice...
 const vertexShaderSource = `#version 300 es
-
-// Aparte de recibir la posición de cada vértice...
 in vec2 aPosition;
-
-// Ahora recibimos una matriz de transformacion
 uniform mat3 uModelMatrix;
-    // uniform es una variable que tiene el mismo valor para cada vertice 
 
-// Ya no pasamos directamente los vertices recibidos a un vector 4d para webgl, debemos transformarlo primero...
-void main() {
-
-    // Convierte el vertice recibido (x,y) en coordenadas homogeneas (x,y,1)    
+void main() {   
     vec3 posicionLocal = vec3(aPosition, 1.0);
-        // Esto nos permite aplicar las transformaciones usando multiplicacion matricial
-
-    // Aplicamos la transformacion correspondiente
     vec3 posicionTransformada = uModelMatrix * posicionLocal;
-        // Lo hacemos a traves de una multiplicacion
-
-    // Una vez aplicada la transformacion podemos enviar el resultado
     gl_Position = vec4(posicionTransformada.xy,0.0,1.0);
 }
 `;
-
-// Nuestro fragmentShader se mantiene igual
 const fragmentShaderSource = `#version 300 es
 precision highp float;
 out vec4 outColor;
@@ -60,7 +42,6 @@ void main() {
 }
 `;
 
-// La compilacion de shaders se mantiene igual
 function crearShader(gl, tipo, codigoFuente) {
     const shader = gl.createShader(tipo);   
     gl.shaderSource(shader, codigoFuente);  
@@ -87,7 +68,6 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     );
 }
 
-// VAO se mantiene igual
 const vao = gl.createVertexArray();
 
 gl.bindVertexArray(vao);
@@ -104,9 +84,6 @@ gl.vertexAttribPointer(
     0              
 );
 
-// Aqui aparece la magia, las transformaciones, cada una permite realizar una transformacion sobre nuestro objeto
-
-// Identidad, no hace ningun cambio (xd)
 function matrizIdentidad() {
     return new Float32Array([
         1, 0, 0,
@@ -114,20 +91,13 @@ function matrizIdentidad() {
         0, 0, 1
     ]);
 }
-
-// Traslacion, mueve todo objeto (todos los vertices)
-    // Si tx = 0.3, el triangulo se desplaza a la derecha
-    // Si ty = 0.1, el triangulo se desplaza hacia arriba
 function matrizTraslacion(tx, ty) {
     return new Float32Array([
-        1,  0, 0,
-        0,  1, 0,
+        1,  0,  0,
+        0,  1,  0,
         tx, ty, 1
     ]);
 }
-    
-// Rotacion, gira alrededor del origen
-    // Ojo, rota alrededor del 0,0, no alrededor del centro del canvas
 function matrizRotacion(anguloRadianes) {
     const c=Math.cos(anguloRadianes);
     const s=Math.sin(anguloRadianes);
@@ -138,19 +108,13 @@ function matrizRotacion(anguloRadianes) {
          0, 0, 1
     ]);
 }
-
-// Escala, cambia el tamanio
-    // sx para controlar el ancho
-    // sy para controlar el alto
-function matrizEscala(sx, sy) { // 
+function matrizEscala(sx, sy) { 
     return new Float32Array([
         sx, 0,  0,
         0,  sy, 0,
         0,  0,  1
     ]);
 }
-
-// Multipllicacion, para combinar transformaciones en una sola matriz
 function multiplicarMat3(a,b){
     const resultado=new Float32Array(9);
     for(let columna=0;columna<3;columna++){
@@ -165,38 +129,94 @@ function multiplicarMat3(a,b){
     return resultado;
 }
 
-// Aplicamos las transformaciones
+// Ya no aplicaremos las transformaciones una sola vez, ahora se aplicaran en cada frame
 
-// Desplazamiento
-const tx = 0.30;
-const ty = 0.10;
-// Giro
-const anguloGrados = 35;
-const anguloRadianes = anguloGrados * Math.PI / 180;
-// Escala
-const sx = 1.20;
-const sy = 0.80;
-
-const T = matrizTraslacion(tx, ty);
-const R = matrizRotacion(anguloRadianes);
-const S = matrizEscala(sx, sy);
-const RS = multiplicarMat3(R, S);
-// Todas las transformaciones juntas en una matriz
-const modelMatrix = multiplicarMat3(T, RS);
-
-// Creamos el programa
+// Obtener la ubicación del uniform
+    // El Vertex Shader tiene: uniform mat3 uModelMatrix;
+    // Necesitamos saber dónde está almacenado para enviarle una matriz en cada frame
+    
 gl.useProgram(program);     
-
-// Busca dentro de shader donde vive el uniform y obtiene su "direccion"
+    // Busca la ubicacion del uniform "uModelMatrix" en el programa
 const modelMatrixLocation = gl.getUniformLocation(program, "uModelMatrix");
+    // Guarda la ubicación en la variable modelMatrixLocation
 
-// Luego lo envia
-gl.uniformMatrix3fv(
-    modelMatrixLocation,    // Uniform que recibira los datos
-    false,                  // No transpone la matriz
-    modelMatrix             // Matriz con todas las transformaciones que preparamos
+// Variables que cambian durante la ejecución.
+let angulo = 0.0;          // rotación acumulada
+let tiempoAnterior = 0.0;  // tiempo del frame anterior
+
+// Velocidad angular
+const velocidadAngular = 60 * Math.PI / 180; // 60 grados por segundo convertidos a radianes
+
+// Transformaciones constantes, no cambian entre frames
+const T = matrizTraslacion(
+    0.30,
+    0.10
+);
+const S = matrizEscala(
+    1.20,
+    0.80
 );
 
-gl.clear(gl.COLOR_BUFFER_BIT);      // Limpiamos el canvas
-gl.bindVertexArray(vao);            // Activamos la configuracion VAO
-gl.drawArrays(gl.TRIANGLES,0,3);    // Dibujamos el triangulo
+
+// ------------------------------------------------------------
+// Render Loop
+// ------------------------------------------------------------
+// Esta funcion es el corazon de la aplicacion
+// El navegador la ejecuta aproximadamente una vez por cada actualizacion de pantalla
+function render(tiempoActual){
+    // Convertir milisegundos a segundos.
+    const tiempoSegundos=tiempoActual*0.001;
+
+    // deltaTime: Tiempo transcurrido desde el frame anterior.
+    let deltaTime=tiempoSegundos-tiempoAnterior;
+    tiempoAnterior=tiempoSegundos;
+
+    // Evitamos un salto muy grande cuando la pestaña estuvo pausada.
+    if(deltaTime>0.1){
+        deltaTime=0.0;
+    }
+
+    // Actualizar el estado de la escena
+    angulo+=velocidadAngular*deltaTime;
+        // Ángulo = ángulo + velocidad * tiempo
+
+    // Crear la nueva matriz de rotacion
+    const R=matrizRotacion(angulo);
+
+    // Combinar transformaciones
+    const RS = multiplicarMat3(R, S);
+    const modelMatrix = multiplicarMat3(T, RS);
+        // Primero escala
+        // Luego rota
+        // Finalmente traslada
+        // M = T * R * S
+    
+    // Limpiar la pantalla
+    gl.clear(gl.COLOR_BUFFER_BIT);
+        // Igual que en el Paso 2, borra el contenido del frame anterior
+
+
+    // Enviar la matriz al Vertex Shader.
+    gl.useProgram(program);
+    gl.uniformMatrix3fv(
+        modelMatrixLocation,
+        false,               // no transponer
+        modelMatrix          // matriz enviada a la GPU
+    );
+
+    // Dibuja el triangulo
+    gl.bindVertexArray(vao);
+    gl.drawArrays(
+        gl.TRIANGLES,
+        0,   // primer vertice
+        3    // cantidad de vértices
+    );
+
+    // Solicitar el siguiente frame
+    requestAnimationFrame(render);
+        // El navegador volverá a llamar render() antes del próximo refresco de pantalla.
+}
+
+// Solo llamamos requestAnimationFrame una vez
+// A partir de aquí el propio render loop se encargará de llamarse continuamente
+requestAnimationFrame(render);
