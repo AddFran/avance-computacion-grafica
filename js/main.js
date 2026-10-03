@@ -131,16 +131,20 @@ gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
 
 // Cada vertice contiene 6 floats: x, y, z, r, g, b, 24 bytes
 const stride=6*Float32Array.BYTES_PER_ELEMENT;
+    // Stride: Tamanio de un vertice completo en bytes
+        // x y z = 12
+        // r g b = 12
+        // Cada uno ocupa 4 bytes
 
 // Posicion
 const positionLocation = gl.getAttribLocation(program,"aPosition");
 gl.enableVertexAttribArray(positionLocation);
 gl.vertexAttribPointer(
     positionLocation,
-    3,
+    3,                  // Ahora lee 3 floats (x,y,z) por vetice 
     gl.FLOAT,
     false,
-    stride,
+    stride,             // Aplicamos el stride para saltar los 3 floats de color
     0
 );
 
@@ -158,11 +162,13 @@ gl.vertexAttribPointer(
 );
 
 // Aparte del vertex buffer y ya que trabajamos con indices, ahora necesitamos nuestro index buffer
+    //  Index buffer para almacenar los indices de los vertices que forman cada triangulo
 const indexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
     // De forma similar al vertex buffer
-    // ELEMENT_ARRAY_BUFFER  contiene los indices
+    // ELEMENT_ARRAY_BUFFER contiene los indices
+    // ARRAY_BUFFER contiene los vertices, ELEMENT_ARRAY_BUFFER contiene los indices de los vertices que forman cada triangulo
 
 // Funciones/matrices listas para transformar nuestro objeto
     // Al trabajar en 3D necesitamos matrices 4x4 y aniadir el eje z
@@ -237,22 +243,22 @@ function multiplicarMat4(a,b){
     return resultado;
 }
 
-
-
 gl.useProgram(program);
+// Obtenemos la direccion donde la GPU espera recibir la matriz modelo
+    // Ojo, solo encuentra la ubicacion, no enviamos nada aun
 const modelMatrixLocation =
     gl.getUniformLocation(
         program,
         "uModelMatrix"
     );
 
-// Animacion
+// Animacion, ahora no solo rotamos en un eje, sino en dos
 let anguloX = 0;
 let anguloY = 0;
 
 let tiempoAnterior = 0;
 
-// Velocidad angular en radianes por segundo.
+// Velocidad angular en radianes por segundo
 const velocidadX = 1.0;
 const velocidadY = 1.0;
 
