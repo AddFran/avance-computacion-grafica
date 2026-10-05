@@ -1,7 +1,7 @@
-// Paso 6: Camara y proyeccion perspectiva
-// Ahora dibujamos desde el punto de vista de una camara y no desde el centro del mundo
-    // Paso 5: El cubo se rotaba con una matriz de transformación y se enviaba directamente al shader
-    // Paso 6: El cubo existe en un mundo, una cámara observa ese mundo y una proyección perspectiva convierte la escena 3D en la imagen 2D del canvas
+// Paso 7: Geometria esferica
+// Dejamos el cubo atras y ahora formamos nuestra primera esfera
+    // Esta esfera se encuentra formada por muchos triangulos
+    // Los vertices, indices y otras cosas estan formadas de forma procedural estan formados de forma procedural
 
 // Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
 const canvas=document.getElementById("glCanvas"); 
@@ -15,59 +15,100 @@ gl.viewport(0,0,canvas.width,canvas.height);
 gl.clearColor(0.0, 0.0, 0.0, 1.0); 
 gl.enable(gl.DEPTH_TEST); 
 
-const vertices=new Float32Array([ 
-    // x,     y,     z,      r,   g,   b
-    -0.5, -0.5,  0.5,    1.0, 0.2, 0.2, // 0
-     0.5, -0.5,  0.5,    0.2, 1.0, 0.2, // 1
-     0.5,  0.5,  0.5,    0.2, 0.4, 1.0, // 2
-    -0.5,  0.5,  0.5,    1.0, 1.0, 0.2, // 3
+// Ya no definimos manualmente cada vertice e indice, una funcion lo hara por nosotros
+    // Esta formara cada uno de los vertices e indices de forma automatica para formar nuestra esfera
+function crearEsfera(
+        radio,              // Tamaño de la esfera
+        segmentosLatitud,   // Numero de divisiones de arriba hacia abajo
+        segmentosLongitud   // Numero de divisiones de izquierda a derecha
+    ){
+    // En lugar de ponerlos uno por uno, la funcion se encarga de generarlos automaticamente
+    const vertices = [];    // Array donde almacenamos los vertices
+    const indices = [];     // Array donde almacenamos los indices
 
-    -0.5, -0.5, -0.5,    1.0, 0.2, 1.0, // 4
-     0.5, -0.5, -0.5,    0.2, 1.0, 1.0, // 5
-     0.5,  0.5, -0.5,    1.0, 0.6, 0.2, // 6
-    -0.5,  0.5, -0.5,    0.7, 0.7, 0.7  // 7
-]);
-    
-const indices = new Uint16Array([
-    // Frente
-    0, 1, 2,
-    0, 2, 3,
-    // Derecha
-    1, 5, 6,
-    1, 6, 2,
-    // Atrás
-    5, 4, 7,
-    5, 7, 6,
-    // Izquierda
-    4, 0, 3,
-    4, 3, 7,
-    // Arriba
-    3, 2, 6,
-    3, 6, 7,
-    // Abajo
-    4, 5, 1,
-    4, 1, 0
-]);
+    // Recorremos la esfera desde arriba hacia abajo
+    for (let latitud=0;latitud<=segmentosLatitud;latitud++) {
+        const v = latitud / segmentosLatitud;   // Indica las posicion actual, un valor entre 0 y 1
+        const phi = v * Math.PI;                // Convertimos v a un angulo entre 0 y PI
+            // Porque para recorrer una esfera verticalmente necesitamos recorrer un ángulo de 180 grados, que en radianes es PI
 
-// VextexShader cambia a comparacion de versiones anteriores
+        // Recorremos la esfera de izquierda a derecha
+        for (let longitud = 0;longitud <= segmentosLongitud;longitud++) {
+            const u = longitud / segmentosLongitud;     // Valor entre 0 y 1
+            const theta = u * Math.PI * 2;              // Convertimos u a un angulo entre 0 y 2PI
+                // Antes era de arriba hacia abajo
+                // Ahora es de izquierda a derecha, recorrer 360 grados
+
+            // Convertimos todos los valores anteriores en una posiscion tridimensional
+            const x = radio * Math.sin(phi) * Math.cos(theta);
+            const y = radio * Math.cos(phi);
+            const z = radio * Math.sin(phi) * Math.sin(theta);
+
+            // Posicion
+            vertices.push(x,y,z);
+                // Agregamos estas coordenadas al array de vertices
+
+            // Color temporal
+            // La variación ayuda a percibir la geometria
+            const r = 1.0;
+            const g = 0.35 + 0.45 * v;
+            const b = 0.05 + 0.15 * u;
+
+            vertices.push(r,g,b);
+                // Agregamos el color al array de vertices
+        }
+    }
+
+    const columnas = segmentosLongitud + 1;
+
+    // Ahora toca los indices
+    for (let latitud = 0;latitud < segmentosLatitud;latitud++) {
+        for (let longitud = 0;longitud < segmentosLongitud;longitud++) {
+            const actual = latitud * columnas + longitud;
+            const siguiente = actual + columnas;
+            
+            // Recuerda que un cuadrado esta formado por dos triangulos
+
+            // Primer triángulo
+            indices.push(
+                actual,
+                siguiente,
+                actual + 1
+            );
+
+            // Segundo triángulo
+            indices.push(
+                siguiente,
+                siguiente + 1,
+                actual + 1
+            );
+        }
+    }
+
+    // Retornamos la lista de vertices e indices en el formato que WebGL2 espera
+    return {
+        vertices: new Float32Array(vertices),
+        indices: new Uint16Array(indices)
+    };
+}
+
+// Creamos nuestra esfera
+const esfera = crearEsfera(1.0,32,48);
+const vertices = esfera.vertices;
+const indices = esfera.indices;
+
 const vertexShaderSource = `#version 300 es 
 in vec3 aPosition;
 in vec3 aColor;
 
 uniform mat4 uModelMatrix;
-
-// Nuevas matrices
-uniform mat4 uViewMatrix;       // Representa la cámara: desde dónde se observa el mundo
-uniform mat4 uProjectionMatrix; // Convierte la escena 3D en una proyección con perspectiva
+uniform mat4 uViewMatrix;       
+uniform mat4 uProjectionMatrix;
 
 out vec3 vColor;
 
 void main() {
-    gl_Position = uProjectionMatrix         // Convierte la escena 3D en una imagen 2D
-                * uViewMatrix               // Representa la camara, transforma el mundo a la vista de la camara
-                * uModelMatrix              // Coloca el cubo en el mundo y aplica la rotacion
-                * vec4(aPosition, 1.0);     // Posicion del vertice
-    
+    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);     
     vColor = aColor;
 }
 `;
@@ -124,34 +165,16 @@ const stride=6*Float32Array.BYTES_PER_ELEMENT;
 
 const positionLocation = gl.getAttribLocation(program,"aPosition");
 gl.enableVertexAttribArray(positionLocation);
-gl.vertexAttribPointer(
-    positionLocation,
-    3,                
-    gl.FLOAT,
-    false,
-    stride,          
-    0
-);
+gl.vertexAttribPointer(positionLocation,3,gl.FLOAT,false,stride,0);
 
 const colorLocation = gl.getAttribLocation(program, "aColor");
 gl.enableVertexAttribArray(colorLocation);
-gl.vertexAttribPointer(
-    colorLocation,
-    3,
-    gl.FLOAT,
-    false,
-    stride,
-    3*Float32Array.BYTES_PER_ELEMENT   
-);
+gl.vertexAttribPointer(colorLocation,3,gl.FLOAT,false,stride,3*Float32Array.BYTES_PER_ELEMENT   );
 
 const indexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
 gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
 
-// ----------------------------------------
-// Agregaremos nuevas operaciones para poder trabajar con la camara y la proyeccion perspectiva
-
-// Resta de dos vectores 3D, obtiene la direccion entre dos puntos
 function restarVec3(a,b){
     return [
         a[0]-b[0],
@@ -159,13 +182,9 @@ function restarVec3(a,b){
         a[2]-b[2]
     ];
 }
-
-// Longitud de un vector 3D, magnitud de un vector
 function longitudVec3(v){
     return Math.hypot(v[0],v[1],v[2]);
 }
-
-// Normaliza un vector 3D, lo convierte en un vector unitario para poder usarlo como direccion
 function normalizarVec3(v){
     const longitud=longitudVec3(v);
     return [
@@ -174,9 +193,6 @@ function normalizarVec3(v){
         v[2]/longitud
     ];
 }
-
-// Producto cruz de dos vectores 3D, obtiene un vector perpendicular a ambos
-    // Se usa para obtener la direccion "arriba" de la camara
 function productoCruz(a,b){
     return [
         a[1]*b[2]-a[2]*b[1],
@@ -184,8 +200,6 @@ function productoCruz(a,b){
         a[0]*b[1]-a[1]*b[0]
     ];
 }
-
-// Matrices que ya conociamos de pasos anteriores
 function matrizIdentidad4() {
     return new Float32Array([
         1, 0, 0, 0,
@@ -257,42 +271,22 @@ function multiplicarMat4(a,b){
     return resultado;
 }
 
-// OTRAS MUY IMPORTANTES PARA LA CAMARA Y LA PROYECCION PERSPECTIVA
-
-// Matriz de proyeccion, construye la matriz de proyeccion perspectiva
 function matrizPerspectiva(fovRadianes,aspect,near,far){
-    // Factor basado en en campo de vision (FOV)
     const f=1.0 / Math.tan(fovRadianes / 2);
-        // Mientras mas grande, mayor sera el angulo de vision, menor el valor de f y la camara abre mas el "lente"
-        // Mientras mas pequeño, menor sera el angulo de vision, mayor el valor de f y la camara abre menos el "lente"
-
-    // Factor basado en la distancia de recorte (near y far)
     const nf=1 / (near - far);
 
-    // Matriz de proyeccion perspectiva, convierte la escena 3D en una imagen 2D
     return new Float32Array([
-        f / aspect, 0, 0, 0,            // Ajusta el ancho según la proporción del canvas
-        0, f, 0, 0,                     // Escala el alto según el FOV
-        0, 0, (far + near) * nf, -1,    // Transforma la profundidad usando near y far                    
-        0, 0, (2 * far * near) * nf, 0  // Hace posible la división perspectiva
+        f / aspect, 0, 0, 0,            
+        0, f, 0, 0,                     
+        0, 0, (far + near) * nf, -1,                      
+        0, 0, (2 * far * near) * nf, 0  
     ]);
 }
 
-// Matriz de vista, construye la matriz de vista
 function matrizLookAt(eye,target,up){
-    // Eje Z de la camara: desde target hacia eye
-        // Obtiene la dirección desde el punto que la cámara observa hacia la posición de la camara
     const zAxis=normalizarVec3(restarVec3(eye, target));
-
-    // Eje X de la cámara
-        // Ahora la camara sabe cual es su lado derecho
     const xAxis=normalizarVec3(productoCruz(up, zAxis));
-
-    // Eje Y de la cámara
-        // Eje vertical de la camara, perpendicular a los otros dos ejes
     const yAxis=productoCruz(zAxis,xAxis);
-
-    // Con estos 3 ejes, la camara sabe hacia donde mirar y cual es su "arriba", ahora solo falta colocarla en el mundo
 
     return new Float32Array([
         xAxis[0],
@@ -332,66 +326,27 @@ function matrizLookAt(eye,target,up){
     ]);
 }
 
-// Ahora no solo obtenemos la direccion de los vertices...
-const modelMatrixLocation =
-    gl.getUniformLocation(
-        program,
-        "uModelMatrix"
-    );
-// Sino tambien obtenemos la direccion de la camara y la proyeccion perspectiva
-const viewMatrixLocation =
-    gl.getUniformLocation(
-        program,
-        "uViewMatrix"
-    );
-const projectionMatrixLocation =
-    gl.getUniformLocation(
-        program,
-        "uProjectionMatrix"
-    );
+const modelMatrixLocation =gl.getUniformLocation(program,"uModelMatrix");
+const viewMatrixLocation =gl.getUniformLocation(program,"uViewMatrix");
+const projectionMatrixLocation =gl.getUniformLocation(program,"uProjectionMatrix");
 
-// Ahora configuramos la camara y la proyeccion perspectiva
-    // Solo es necesario hacerlo una vez y no en cada frame
-const eye = [2.5, 1.8, 4.0];        // Posision fisica de la camara
-const target = [0.0, 0.0, 0.0];     // Punto al que mira la camara
-const up = [0.0, 1.0, 0.0];         // Direccion considerada "arriba" para la camara
+const eye = [2.5, 1.8, 4.0];        
+const target = [0.0, 0.0, 0.0];     
+const up = [0.0, 1.0, 0.0];         
 
-// Creamos la viewMatrix
-const viewMatrix =
-    matrizLookAt(
-        eye,
-        target,
-        up
-    );
+const viewMatrix=matrizLookAt(eye,target,up);
 
-// Configuramos la proyeccion perspectiva
-const fovGrados = 60;                           // Define el angulo de vision de la camara
-const fovRadianes = fovGrados * Math.PI / 180;  // Convertimos a radianes, las funciones trigonométricas de JS trabajan con radianes
-const aspect = canvas.width / canvas.height;    // Calcula la proporcion del canvas para que la imagen no se vea estirada
+const fovGrados = 60;                           
+const fovRadianes = fovGrados * Math.PI / 180;  
+const aspect = canvas.width / canvas.height;    
 
-const near = 0.1;   // Plano near de recorte, todo lo que este mas cerca que este plano no se dibujara
-const far = 100.0;  // Plano far de recorte, todo lo que este mas lejos que este plano no se dibujara
+const near = 0.1;  
+const far = 100.0; 
 
-// Creamos la projectionMatrix
-const projectionMatrix =
-    matrizPerspectiva(
-        fovRadianes,
-        aspect,
-        near,
-        far
-    );
+const projectionMatrix =matrizPerspectiva(fovRadianes,aspect,near,far);
 
-// Enviamos la viewMatrix y la projectionMatrix a la GPU
-gl.uniformMatrix4fv(
-    viewMatrixLocation,
-    false,
-    viewMatrix
-);
-gl.uniformMatrix4fv(
-    projectionMatrixLocation,
-    false,
-    projectionMatrix
-);
+gl.uniformMatrix4fv(viewMatrixLocation,false,viewMatrix);
+gl.uniformMatrix4fv(projectionMatrixLocation,false,projectionMatrix);
 
 
 let anguloX = 0;
@@ -401,43 +356,24 @@ const velocidadX = 1.0;
 const velocidadY = 1.0;
 
 function render(tiempoActual) {
-    // requestAnimationFrame entrega milisegundos
     const tiempoSegundos=tiempoActual*0.001;
     const deltaTime=tiempoSegundos-tiempoAnterior;
     tiempoAnterior = tiempoSegundos;
 
-    // Actualizamos los angulos
     anguloX+=velocidadX*deltaTime;
     anguloY+=velocidadY*deltaTime;
 
-    // Construimos la matriz modelo
     const Rx = matrizRotacionX(anguloX);
     const Ry = matrizRotacionY(anguloY);
     const rotacion =multiplicarMat4(Ry, Rx);
 
-    // El objeto permanece en el origen del mundo
-    const T =
-        matrizTraslacion4(
-            0.0,
-            0.0,
-            0.0
-        );
+    const T=matrizTraslacion4(0.0,0.0,0.0); 
+    const modelMatrix=multiplicarMat4(T,rotacion);
 
-    // Creamos la matriz modelo 
-    const modelMatrix =
-        multiplicarMat4(
-            T,
-            rotacion
-        );
-
-    // Enviamos la matriz modelo a la GPU
-    gl.uniformMatrix4fv(
-        modelMatrixLocation,
-        false,
-        modelMatrix
-    );
+    gl.uniformMatrix4fv(modelMatrixLocation,false,modelMatrix);
 
     gl.clear(gl.COLOR_BUFFER_BIT |gl.DEPTH_BUFFER_BIT);
+
     gl.bindVertexArray(vao);
     gl.drawElements(
         gl.TRIANGLES,
