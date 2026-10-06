@@ -1,7 +1,6 @@
-// Paso 7: Geometria esferica
-// Dejamos el cubo atras y ahora formamos nuestra primera esfera
-    // Esta esfera se encuentra formada por muchos triangulos
-    // Los vertices, indices y otras cosas estan formadas de forma procedural estan formados de forma procedural
+// Paso 8: Normales e iluminacion basica
+// Añadiremos informacion geometrica de orientacion mediante vectores normales
+// La esfera dejara de depender de colores y respondera a una fuente de luz direccional mediente producto punto
 
 // Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
 const canvas=document.getElementById("glCanvas"); 
@@ -15,113 +14,104 @@ gl.viewport(0,0,canvas.width,canvas.height);
 gl.clearColor(0.0, 0.0, 0.0, 1.0); 
 gl.enable(gl.DEPTH_TEST); 
 
-// Ya no definimos manualmente cada vertice e indice, una funcion lo hara por nosotros
-    // Esta formara cada uno de los vertices e indices de forma automatica para formar nuestra esfera
-function crearEsfera(
-        radio,              // Tamaño de la esfera
-        segmentosLatitud,   // Numero de divisiones de arriba hacia abajo
-        segmentosLongitud   // Numero de divisiones de izquierda a derecha
-    ){
-    // En lugar de ponerlos uno por uno, la funcion se encarga de generarlos automaticamente
-    const vertices = [];    // Array donde almacenamos los vertices
-    const indices = [];     // Array donde almacenamos los indices
+// Modificamos la funcion 
+function crearEsfera(radio,segmentosLatitud,segmentosLongitud){
+    const vertices = [];
+    const indices = []; 
 
-    // Recorremos la esfera desde arriba hacia abajo
     for (let latitud=0;latitud<=segmentosLatitud;latitud++) {
-        const v = latitud / segmentosLatitud;   // Indica las posicion actual, un valor entre 0 y 1
-        const phi = v * Math.PI;                // Convertimos v a un angulo entre 0 y PI
-            // Porque para recorrer una esfera verticalmente necesitamos recorrer un ángulo de 180 grados, que en radianes es PI
-
-        // Recorremos la esfera de izquierda a derecha
+        const v = latitud / segmentosLatitud;
+        const phi = v * Math.PI;
         for (let longitud = 0;longitud <= segmentosLongitud;longitud++) {
-            const u = longitud / segmentosLongitud;     // Valor entre 0 y 1
-            const theta = u * Math.PI * 2;              // Convertimos u a un angulo entre 0 y 2PI
-                // Antes era de arriba hacia abajo
-                // Ahora es de izquierda a derecha, recorrer 360 grados
+            const u = longitud / segmentosLongitud;
+            const theta = u * Math.PI * 2;         
 
-            // Convertimos todos los valores anteriores en una posiscion tridimensional
+            // Calculamos la normal del vertices
+            const nx = Math.sin(phi) * Math.cos(theta);
+            const ny = Math.cos(phi);
+            const nz = Math.sin(phi) * Math.sin(theta);
+
             const x = radio * Math.sin(phi) * Math.cos(theta);
             const y = radio * Math.cos(phi);
             const z = radio * Math.sin(phi) * Math.sin(theta);
 
-            // Posicion
             vertices.push(x,y,z);
-                // Agregamos estas coordenadas al array de vertices
 
-            // Color temporal
-            // La variación ayuda a percibir la geometria
-            const r = 1.0;
-            const g = 0.35 + 0.45 * v;
-            const b = 0.05 + 0.15 * u;
-
-            vertices.push(r,g,b);
-                // Agregamos el color al array de vertices
+            // Normal. En una esfera centrada en el origen
+            vertices.push(nx, ny, nz);
+                // La dirección normal ya es (nx, ny, nz)
         }
     }
 
     const columnas = segmentosLongitud + 1;
 
-    // Ahora toca los indices
     for (let latitud = 0;latitud < segmentosLatitud;latitud++) {
         for (let longitud = 0;longitud < segmentosLongitud;longitud++) {
             const actual = latitud * columnas + longitud;
             const siguiente = actual + columnas;
             
-            // Recuerda que un cuadrado esta formado por dos triangulos
-
-            // Primer triángulo
-            indices.push(
-                actual,
-                siguiente,
-                actual + 1
-            );
-
-            // Segundo triángulo
-            indices.push(
-                siguiente,
-                siguiente + 1,
-                actual + 1
-            );
+            indices.push(actual,siguiente,actual + 1);
+            indices.push(siguiente,siguiente + 1,actual + 1);
         }
     }
 
-    // Retornamos la lista de vertices e indices en el formato que WebGL2 espera
     return {
         vertices: new Float32Array(vertices),
         indices: new Uint16Array(indices)
     };
 }
 
-// Creamos nuestra esfera
 const esfera = crearEsfera(1.0,32,48); // 1.0, 32, 48
 const vertices = esfera.vertices;
 const indices = esfera.indices;
 
 const vertexShaderSource = `#version 300 es 
 in vec3 aPosition;
-in vec3 aColor;
+
+// Dejamos atras los atributos de color por cada vertice
+in vec3 aNormal;
+    // Normal del vertice
+    // Ahora solo consideramos la normal
 
 uniform mat4 uModelMatrix;
 uniform mat4 uViewMatrix;       
 uniform mat4 uProjectionMatrix;
 
-out vec3 vColor;
+out vec3 vNormal;
 
 void main() {
     gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);     
-    vColor = aColor;
+    
+    // Tambien necesitamos transformar la normal del vertice a espacio de mundo
+    vNormal = normalize(mat3(uModelMatrix) * aNormal);
+        // Normalizamos para que la longitud sea 1
 }
 `;
 
 const fragmentShaderSource = `#version 300 es
 precision highp float;
 
-in vec3 vColor;
+// Info de vexter shader
+in vec3 vNormal;
+
+uniform vec3 uLightDirection;
+uniform vec3 uObjectColor;
 
 out vec4 outColor;
 
 void main() {
-    outColor = vec4(vColor, 1.0);
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightDirection);
+
+    float diffuse = max(dot(N, L), 0.0);
+
+    float ambient = 0.18;
+
+    vec3 color =
+        uObjectColor *
+        (ambient + diffuse * 0.82);
+
+    outColor = vec4(color, 1.0);
 }
 `;
 
@@ -161,15 +151,17 @@ const vertexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer);
 gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
 
+// x, y, z, nx, ny, nz = 6 floats
 const stride=6*Float32Array.BYTES_PER_ELEMENT;
 
 const positionLocation = gl.getAttribLocation(program,"aPosition");
 gl.enableVertexAttribArray(positionLocation);
 gl.vertexAttribPointer(positionLocation,3,gl.FLOAT,false,stride,0);
 
-const colorLocation = gl.getAttribLocation(program, "aColor");
-gl.enableVertexAttribArray(colorLocation);
-gl.vertexAttribPointer(colorLocation,3,gl.FLOAT,false,stride,3*Float32Array.BYTES_PER_ELEMENT   );
+// Normal
+const normalLocation = gl.getAttribLocation(program, "aNormal");
+gl.enableVertexAttribArray(normalLocation);
+gl.vertexAttribPointer(normalLocation,3,gl.FLOAT,false,stride,3*Float32Array.BYTES_PER_ELEMENT);
 
 const indexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
@@ -330,7 +322,15 @@ const modelMatrixLocation =gl.getUniformLocation(program,"uModelMatrix");
 const viewMatrixLocation =gl.getUniformLocation(program,"uViewMatrix");
 const projectionMatrixLocation =gl.getUniformLocation(program,"uProjectionMatrix");
 
-const eye = [2.5, 1.8, 4.0];        
+// Añadimos
+const lightDirectionLocation =
+    gl.getUniformLocation(program, "uLightDirection");
+
+const objectColorLocation =
+    gl.getUniformLocation(program, "uObjectColor");
+
+
+const eye = [0., 1.5, 4.5];        
 const target = [0.0, 0.0, 0.0];     
 const up = [0.0, 1.0, 0.0];         
 
@@ -349,11 +349,20 @@ gl.uniformMatrix4fv(viewMatrixLocation,false,viewMatrix);
 gl.uniformMatrix4fv(projectionMatrixLocation,false,projectionMatrix);
 
 
+// Dirección desde la superficie hacia la luz.
+const lightDirection = normalizarVec3([1.0, 0.7, 1.0]);
+gl.uniform3fv(lightDirectionLocation, lightDirection);
+
+// Color base del cuerpo celeste.
+gl.uniform3fv(objectColorLocation, [0.95, 0.45, 0.08]);
+
+
 let anguloX = 0;
 let anguloY = 0;
 let tiempoAnterior = 0;
-const velocidadX = 1.0;
-const velocidadY = 1.0;
+
+const velocidadX = 0.08;
+const velocidadY = 0.35;
 
 function render(tiempoActual) {
     const tiempoSegundos=tiempoActual*0.001;
@@ -372,7 +381,7 @@ function render(tiempoActual) {
 
     gl.uniformMatrix4fv(modelMatrixLocation,false,modelMatrix);
 
-    gl.clear(gl.COLOR_BUFFER_BIT |gl.DEPTH_BUFFER_BIT);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.bindVertexArray(vao);
     gl.drawElements(
