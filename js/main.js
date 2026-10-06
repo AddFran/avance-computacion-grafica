@@ -93,7 +93,7 @@ function crearEsfera(
 }
 
 // Creamos nuestra esfera
-const esfera = crearEsfera(1.0,32,48);
+const esfera = crearEsfera(1.0,32,48); // 1.0, 32, 48
 const vertices = esfera.vertices;
 const indices = esfera.indices;
 
