@@ -100,17 +100,23 @@ uniform vec3 uObjectColor;
 out vec4 outColor;
 
 void main() {
+    // Normaliza la normal y la direccion de la luz
     vec3 N = normalize(vNormal);
     vec3 L = normalize(uLightDirection);
+        // Ahora cada uno vale 1.0, solo describe la direccion
 
+    // Calculamos el producto punto entre la normal y la direccion de la luz
     float diffuse = max(dot(N, L), 0.0);
 
+    // Un poco de luz ambiental para que la parte no iluminada no sea negra
     float ambient = 0.18;
 
+    // Combinamos la luz ambiental y difusa con el color del objeto
     vec3 color =
         uObjectColor *
         (ambient + diffuse * 0.82);
 
+    // Asignamos el color final al fragmento
     outColor = vec4(color, 1.0);
 }
 `;
