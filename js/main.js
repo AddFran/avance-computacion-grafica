@@ -1,11 +1,5 @@
-// Paso 9: Texturas y Coordenadas UV
-// Dejamos de usar un color base y pasamos a usar una textura a traves de coordenadas UV
-
-// ¿Que son las coordenadas UV?
-// Son un sistema de coordenadas bidimensional que se utiliza para mapear texturas en superficies tridimensionales
-// Cada vertice viene acompañado de un par de coordenadas (u,v) que indican en que parte de una textura 2D se encuentra el vertice 
-    // u -> posicion horizontal
-    // v -> posicion vertical
+// Paso 10: Texturas Reales - Primer sol y tierra
+// Dejamos la textura procedural y usamos imagenes reales, ademas de reutilizar la geometria de la esfera para generar dos cuerpos celestes
 
 // Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
 const canvas=document.getElementById("glCanvas"); 
@@ -23,126 +17,111 @@ function crearEsfera(radio,segmentosLatitud,segmentosLongitud){
     const vertices = [];
     const indices = []; 
 
-    for (let latitud=0;latitud<=segmentosLatitud;latitud++) {
-        const v = latitud / segmentosLatitud;
-        const phi = v * Math.PI;
-        for (let longitud = 0;longitud <= segmentosLongitud;longitud++) {
-            const u = longitud / segmentosLongitud;
-            const theta = u * Math.PI * 2;         
+    for (let latitud=0;latitud<=segmentosLatitud;latitud++){
+        const v=latitud/segmentosLatitud;
+        const phi=v*Math.PI;
+        for (let longitud=0;longitud<=segmentosLongitud;longitud++) {
+            const u=longitud/segmentosLongitud;
+            const theta=u*Math.PI*2;         
 
-            // Calculamos la normal del vertices
-            const nx = Math.sin(phi) * Math.cos(theta);
-            const ny = Math.cos(phi);
-            const nz = Math.sin(phi) * Math.sin(theta);
+            const nx=Math.sin(phi)*Math.cos(theta);
+            const ny=Math.cos(phi);
+            const nz=Math.sin(phi)*Math.sin(theta);
 
-            const x = radio * Math.sin(phi) * Math.cos(theta);
-            const y = radio * Math.cos(phi);
-            const z = radio * Math.sin(phi) * Math.sin(theta);
+            const x=radio*Math.sin(phi)*Math.cos(theta);
+            const y=radio*Math.cos(phi);
+            const z=radio*Math.sin(phi)*Math.sin(theta);
 
             vertices.push(x,y,z);
-            vertices.push(nx, ny, nz);
-
-            // Coordenadas UV
-            // Invertimos V para que la textura se lea de arriba hacia abajo.
-            vertices.push(u, 1.0 - v);
+            vertices.push(nx,ny,nz);
+            vertices.push(u,1.0-v);
         }
     }
 
-    const columnas = segmentosLongitud + 1;
+    const columnas=segmentosLongitud+1;
 
-    for (let latitud = 0;latitud < segmentosLatitud;latitud++) {
-        for (let longitud = 0;longitud < segmentosLongitud;longitud++) {
-            const actual = latitud * columnas + longitud;
-            const siguiente = actual + columnas;
-            
-            indices.push(actual,siguiente,actual + 1);
-            indices.push(siguiente,siguiente + 1,actual + 1);
+    for(let latitud=0;latitud<segmentosLatitud;latitud++){
+        for(let longitud=0;longitud<segmentosLongitud;longitud++){
+            const actual=latitud*columnas+longitud;
+            const siguiente=actual+columnas;
+            indices.push(actual,siguiente,actual+1);
+            indices.push(siguiente,siguiente+1,actual+1);
         }
     }
 
-    return {
+    return{
         vertices: new Float32Array(vertices),
         indices: new Uint16Array(indices)
     };
 }
 
-const esfera = crearEsfera(1.0,32,48); // 1.0, 32, 48
-const vertices = esfera.vertices;
-const indices = esfera.indices;
+// Aqui estamos creando la geometria de la esfera
+const esfera=crearEsfera(1.0,32,48);                        // 1.0, 32, 48
+    // Solo UNA geometria
+    // La geometria y el objeto no son lo mismo
+    // El objeto se forma con la geometria + transformacion + textura + propiedades
 
 const vertexShaderSource = `#version 300 es 
+in vec3 aPosition; 
+in vec3 aNormal;   
+in vec2 aTexCoord; 
 
-// "in": Datos que entran fuera del shader, desde el buffer de vertices
-in vec3 aPosition; // Posicion del vertice (x,y,z)
-in vec3 aNormal;   // Normal del vertice (nx,ny,nz)
-in vec2 aTexCoord; // Coordenadas UV del vertice (u,v)
+uniform mat4 uModelMatrix;      
+uniform mat4 uViewMatrix;       
+uniform mat4 uProjectionMatrix; 
 
-// "uniform": Datos que entran al shader desde la CPU, pero que son constantes para todos los vertices
-uniform mat4 uModelMatrix;      // Matriz de transformacion del modelo
-uniform mat4 uViewMatrix;       // Matriz de transformacion de la camara
-uniform mat4 uProjectionMatrix; // Matriz de proyeccion de la camara
-
-// "out": Datos que salen del shader y entran al siguiente shader (fragment shader)
-out vec3 vNormal;   // Normal interpolada para el fragment shader
-out vec2 vTexCoord; // Coordenadas UV interpoladas para el fragment shader
+out vec3 vNormal;   
+out vec2 vTexCoord; 
 
 void main() {
-    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);
-        // gl_Position: Contiene la posicion que usara WebGL para dibujar el verticce en la pantalla 
+    // Ahora dividimos el trabajo porque vamos a trabajar con varios objetos
+    vec4 worldPosition = uModelMatrix * vec4(aPosition, 1.0);
+        // uModelMatrix contiene varias transformaciones (escala, rotacion y traslacion)
+        // Transforma el vértice desde las coordenadas locales de la esfera hasta las coordenadas del mundo
     
-    // Para este paso usamos solamente rotaciones y traslaciones
-    vNormal = mat3(uModelMatrix) * aNormal;
-        // Por ello transformamos la normal con la parte 3x3 de Model
+    gl_Position = uProjectionMatrix * uViewMatrix * worldPosition;
+    
+    // Actualizamos las normales del vertice
+    vNormal = normalize(mat3(uModelMatrix) * aNormal);
 
-    // Coordenadas UV permanece sin cambios
     vTexCoord = aTexCoord;
 }
 `;
 
 const fragmentShaderSource = `#version 300 es
-precision highp float; // Establece la precision de los floats a alta
+precision highp float; 
 
-// Recibe la normal y las coordenadas UV interpoladas desde el vertex shader
 in vec3 vNormal;
 in vec2 vTexCoord;
 
-uniform vec3 uLightDirection;   // Direccion de la luz (normalizada)
-uniform float uAmbientStrength; // Nivel de iluminacion ambiental
-uniform sampler2D uTexture;     // Referencia a la textura que se aplicara al modelo
+uniform sampler2D uTexture;      
+uniform vec3 uLightDirection;   
+uniform bool uEmissive;
 
-// Salida final del shader
 out vec4 outColor;
-    // Este es el color que tendra el fragmento (pixel) que se esta dibujando en la pantalla
 
 void main() {
-    // Normalizamos ya que solo queremos la direccion
-    vec3 N = normalize(vNormal);            // Normal del vertice
-    vec3 L = normalize(-uLightDirection);   // Normal de la luz (invertida para que apunte hacia la superficie)
+    // Obtenemos el color respectivo segun la coordenada UV en formato RGB
+    vec3 colorTextura = texture(uTexture, vTexCoord).rgb;
+    
+    // Verifica si el objeto es "emissive", osea si emite luz
+        // Si lo hace, entonces la textura se aplica de forma limpia sin cambios ni aplicando sombreado
+        // Si no, se calcula el sombreado como siempre
+    if (uEmissive) {
+        outColor = vec4(colorTextura, 1.0);
+        return;
+    }
 
-    // Iluminacion difusa
+    vec3 N = normalize(vNormal);            
+    vec3 L = normalize(-uLightDirection);  
+
     float diffuse = max(dot(N, L), 0.0);
-        // dot(N,L): Producto punto
-        // max(): Valor minimo sera 0, evitamos valores negativos
+    float ambiente = 0.15;
 
-    // Combinamos las luces para determinar la intensidad de la iluminacion
-    float illumination =
-        uAmbientStrength +
-        (1.0 - uAmbientStrength) * diffuse;
+    // Modifica el color final en base a todo lo anterior
+    vec3 colorFinal = colorTextura * (ambiente + diffuse);
 
-    // Aqui consultamos a la textura asignada
-
-    // texture() hace la consulta...
-    vec4 texel = texture(uTexture, vTexCoord);
-        // uTexture: Representa nuestra textura
-        // vTexCoord: Corrdenadas UV
-        // Basicamente estamoss preguntando "que color de la textura corresponde a esta coordenada UV"
-        // El resultado es un vec4 (r,g,b,a)
-
-    // Obtenemos el color final junto a la iluminacion (combinamos iluminacion + textura)
-    vec3 finalColor = texel.rgb * illumination;
-
-    // Color final del fragmento
-    outColor = vec4(finalColor, texel.a);
+    outColor = vec4(colorFinal, 1.0);
 }
 `;
 
@@ -180,11 +159,15 @@ gl.bindVertexArray(vao);
 
 const vertexBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffer);
-gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER,esfera.vertices,gl.STATIC_DRAW);
 
-// x y z | nx ny nz | u v = 8 floats
+const indexBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,esfera.indices,gl.STATIC_DRAW);
+
 const stride=8*Float32Array.BYTES_PER_ELEMENT;
 
+// Posicion
 const positionLocation = gl.getAttribLocation(program,"aPosition");
 gl.enableVertexAttribArray(positionLocation);
 gl.vertexAttribPointer(positionLocation,3,gl.FLOAT,false,stride,0);
@@ -197,117 +180,7 @@ gl.vertexAttribPointer(normalLocation,3,gl.FLOAT,false,stride,3*Float32Array.BYT
 // UV
 const texCoordLocation = gl.getAttribLocation(program, "aTexCoord");
 gl.enableVertexAttribArray(texCoordLocation);
-gl.vertexAttribPointer(
-    texCoordLocation,
-    2,
-    gl.FLOAT,
-    false,
-    stride,
-    6*Float32Array.BYTES_PER_ELEMENT
-);
-
-// Indices
-const indexBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);
-gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
-
-
-// Crear textura procedural
-function crearTexturaProcedural(gl){
-    // Tamaño de la textura
-    const ancho = 8;
-    const alto = 4;
-
-    // Reservamos espacio donde guardaremos los colores de la textura
-    const datos = new Uint8Array(ancho * alto * 4);
-        // Aparte del ancho y largo, x4 debido a (r,g,b,a)
-
-    // Formamos la textura
-    for(let y=0;y<alto;y++){
-        for(let x=0;x<ancho;x++){
-            // Convierte (x,y) en el indice dentro del array
-            const i=(y*ancho+x)*4;
-
-            // Genera el patron tipo ajedrez
-            const bloque = (x+y)%2;
-                // Bloque tendra solo dos valor, 1 y 0
-
-            if(bloque===0){
-                // Amarillo / naranja
-                datos[i+0]=255;
-                datos[i+1]=150;
-                datos[i+2]=20;
-                datos[i+3]=255;
-            } else {
-                // Azul oscuro
-                datos[i+0]=20;
-                datos[i+1]=70;
-                datos[i+2]=180;
-                datos[i+3]=255;
-            }
-        }
-    }
-
-    // Hasta ahora solo tenemos un array de 128 valores RGBA, no una textura
-
-    // Creamos la textura
-    const textura = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, textura);
-        // Cuando trabajemos con "TEXTURE_2D", trabajamos con "textura"
-
-    // Crea y define el contenido de la textura
-    gl.texImage2D(
-        gl.TEXTURE_2D,      // Trabajamos con una textura en 2D 
-        0,                  // Nivel del mipmap, no esatmos trabajando con esto
-        gl.RGBA,            // Formato interno a usar (RGBA)
-        ancho,              // Ancho 
-        alto,               // Alto
-        0,                  // border, en WebGL debe ser 0
-        gl.RGBA,            // Formato de datos que entregamos
-        gl.UNSIGNED_BYTE,   // Como estan representados esos datos
-        datos               // Arreglo que construimos
-    );
-
-    // Configuraciones:
-
-    // Filtrado cuando la textura se hace más pequeña
-        // ¿Cómo calculamos el color cuando la textura aparece más pequeña que su tamaño original?
-    gl.texParameteri(
-        gl.TEXTURE_2D,          // Nuestra textura
-        gl.TEXTURE_MIN_FILTER,  // Caso, osea minimo
-        gl.LINEAR               // Solucion, interpola los colores vecinos
-    );
-
-    // Filtrado cuando la textura se hace más grande
-        // ¿Cómo calculamos el color cuando la textura aparece más grande que su tamaño original?
-        // Misma solucion que arriba
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_MAG_FILTER,
-        gl.LINEAR
-    );
-
-    // Que pasas si nuestras coordenadas UV estan fuera de 0 y 1
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_S,  // Direccion horizontal (u)
-        gl.REPEAT           // Textura se repite 
-    );
-
-    // Lo mismo que arriba
-    gl.texParameteri(
-        gl.TEXTURE_2D,
-        gl.TEXTURE_WRAP_T,  // Direccion horizontal (v)
-        gl.CLAMP_TO_EDGE    // Usamos el color del borde en lugar de repetir
-    );
-
-    // Regresamos la textura
-    return textura;
-}
-
-const texturaPlaneta = crearTexturaProcedural(gl);
-
-
+gl.vertexAttribPointer(texCoordLocation,2,gl.FLOAT,false,stride,6*Float32Array.BYTES_PER_ELEMENT);
 
 function restarVec3(a,b){
     return [
@@ -326,6 +199,10 @@ function normalizarVec3(v){
         v[1]/longitud,
         v[2]/longitud
     ];
+}
+function normalizar(v){
+    const l=Math.hypot(v[0],v[1],v[2]);
+    return [v[0]/l,v[1]/l,v[2]/l];
 }
 function productoCruz(a,b){
     return [
@@ -460,17 +337,96 @@ function matrizLookAt(eye,target,up){
     ]);
 }
 
-const modelMatrixLocation =gl.getUniformLocation(program,"uModelMatrix");
-const viewMatrixLocation =gl.getUniformLocation(program,"uViewMatrix");
-const projectionMatrixLocation =gl.getUniformLocation(program,"uProjectionMatrix");
-const lightDirectionLocation = gl.getUniformLocation(program, "uLightDirection");
+// Reemplazamos la funcion que genera la textura por una que cargue una textura
+function cargarTextura(url){ // Recibe la direccion de la textura
+    // Definimos un objeto de textura
+    const textura=gl.createTexture();
+    // Vinculamos la textura
+    gl.bindTexture(gl.TEXTURE_2D, textura);
+        // Indicamos que "textura" es un TEXTURE_2D
+        // Las operaciones que trabajen con TEXTURE_2D trabajaran con "textura"
 
-// Añadimos
-const ambientStrengthLocation = gl.getUniformLocation(program, "uAmbientStrength");
-const textureLocation = gl.getUniformLocation(program, "uTexture");
+    // Pixel temporal mientras carga la imagen
+    gl.texImage2D(
+        gl.TEXTURE_2D,                          // Tipo de textura 
+        0,                                      // Nivel de la textura, 0 es nivel base
+        gl.RGBA,                                // Formato interno con cuatro canales (red,green,blue,alfa)
+        1,                                      // Ancho
+        1,                                      // Alto
+        0,                                      // Borde
+        gl.RGBA,                                // Formato de los datos que proporcionaresmo
+        gl.UNSIGNED_BYTE,                       // Cada canal se representa mediante un entero sin signo de 8 bits
+        new Uint8Array([255, 255, 255, 255])    // Color temporal blanco (r,g,b,a)
+    );
+
+    // Creamos una imagen de JS
+    const imagen=new Image();   
+
+    // Cargamos la imagen, este proceso es asincrono
+    imagen.onload = () => { // Solo se ejecutar cuando la imagen este lista
+        // Volvemos a vincular la textura
+        gl.bindTexture(gl.TEXTURE_2D, textura);
+            // Esto es porque durante la creacion de la textura y la carga de onload pudo haber pasado algo de tiempo
+            // Otras partes del programa podrian haber vinculado otras texturas
+            // Es solo por si acaso
+
+        // Invertimos la imagen
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            // Las coordenadas UV no pueden coincidir, si no hacemos esto la textura se carga al reves
+        
+        // Lo mismo que arriba, solo que ahora en lugar de cargar un fondo en blanco cargamos la textura
+        gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.RGBA,
+            gl.RGBA, gl.UNSIGNED_BYTE,
+            imagen
+        );
+
+        // Generamos los mipmaps
+        gl.generateMipmap(gl.TEXTURE_2D);
+
+        // Establecemos algunos ajustes
+        gl.texParameteri(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_MIN_FILTER,
+            gl.LINEAR_MIPMAP_LINEAR
+        );
+
+        gl.texParameteri(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_MAG_FILTER,
+            gl.LINEAR
+        );
+
+        gl.texParameteri(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_WRAP_S,
+            gl.REPEAT
+        );
+
+        gl.texParameteri(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_WRAP_T,
+            gl.CLAMP_TO_EDGE
+        );
+    };
+
+    imagen.src = url;
+    return textura;
+}
+
+const texturaSol = cargarTextura("texture/sol.jpg");
+const texturaTierra = cargarTextura("texture/tierra.jpg");
 
 
-const eye = [0., 1.5, 4.5];        
+const modelMatrixLocation = gl.getUniformLocation(program,"uModelMatrix");
+const viewMatrixLocation = gl.getUniformLocation(program,"uViewMatrix");
+const projectionMatrixLocation = gl.getUniformLocation(program,"uProjectionMatrix");
+const lightDirectionLocation = gl.getUniformLocation(program,"uLightDirection");
+const textureLoc = gl.getUniformLocation(program, "uTexture");
+const emissiveLoc = gl.getUniformLocation(program, "uEmissive");
+
+
+const eye = [0.0, 3.0, 9.0];        
 const target = [0.0, 0.0, 0.0];     
 const up = [0.0, 1.0, 0.0];         
 
@@ -488,57 +444,80 @@ const projectionMatrix =matrizPerspectiva(fovRadianes,aspect,near,far);
 gl.uniformMatrix4fv(viewMatrixLocation,false,viewMatrix);
 gl.uniformMatrix4fv(projectionMatrixLocation,false,projectionMatrix);
 
-
-// Dirección desde la superficie hacia la luz
 const lightDirection = normalizarVec3([-1.0, -0.5, -1.0]);
 gl.uniform3fv(lightDirectionLocation, lightDirection);
 
-gl.uniform1f(
-    ambientStrengthLocation,
-    0.20
-);
+gl.uniform1i(textureLoc, 0);
 
-// Asociamos la textura al sampler2D en el shader
-gl.activeTexture(gl.TEXTURE0);
-gl.bindTexture(gl.TEXTURE_2D, texturaPlaneta);
+// Funcion para dibujar un cuerpo celeste
+function dibujarCuerpo(textura, modelMatrix, emisivo) {
+    // ¿Recuerdas lo que haciamos al final de la funcion render() en pasos anteriores?
+    // Esto es exactamente lo mismo
 
-// uTexture utilizará la unidad 0.
-gl.uniform1i(textureLocation, 0);
+    // Activamos la textura
+    gl.activeTexture(gl.TEXTURE0);
+    // Volvemos a vinvular la textura
+    gl.bindTexture(gl.TEXTURE_2D, textura);
 
+    gl.uniformMatrix4fv(modelMatrixLocation, false, modelMatrix);
+    gl.uniform1i(emissiveLoc, emisivo ? 1 : 0);
 
-let anguloX = 0;
-let anguloY = 0;
-let tiempoAnterior = 0;
-
-const velocidadX = 0.08;
-const velocidadY = 0.35;
-
-function render(tiempoActual) {
-    const tiempoSegundos=tiempoActual*0.001;
-    const deltaTime=tiempoSegundos-tiempoAnterior;
-    tiempoAnterior = tiempoSegundos;
-
-    anguloX+=velocidadX*deltaTime;
-    anguloY+=velocidadY*deltaTime;
-
-    const Rx = matrizRotacionX(anguloX);
-    const Ry = matrizRotacionY(anguloY);
-    const rotacion =multiplicarMat4(Ry, Rx);
-
-    const T=matrizTraslacion4(0.0,0.0,0.0); 
-    const modelMatrix=multiplicarMat4(T,rotacion);
-
-    gl.uniformMatrix4fv(modelMatrixLocation,false,modelMatrix);
-
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    gl.bindVertexArray(vao);
     gl.drawElements(
         gl.TRIANGLES,
-        indices.length,
+        esfera.indices.length,
         gl.UNSIGNED_SHORT,
         0
     );
+}
+
+
+let tiempoAnterior = 0;
+let giroSol = 0;
+let giroTierra = 0;
+
+function render(ms) {
+    const tiempo = ms * 0.001;
+    const dt = tiempo - tiempoAnterior;
+    tiempoAnterior = tiempo;
+
+    giroSol += 0.10 * dt;
+    giroTierra += 0.45 * dt;
+
+    gl.clear(
+        gl.COLOR_BUFFER_BIT |
+        gl.DEPTH_BUFFER_BIT
+    );
+
+    gl.bindVertexArray(vao);
+
+    const modelSol =
+        multiplicarMat4(
+            matrizRotacionY(giroSol),
+            matrizEscala4(1.35, 1.35, 1.35)
+        );
+
+    dibujarCuerpo(
+        texturaSol,
+        modelSol,
+        true
+    );
+
+    const modelTierra =
+        multiplicarMat4(
+            matrizTraslacion4(3.0, 0.0, 0.0),
+            multiplicarMat4(
+                matrizRotacionY(giroTierra),
+                matrizEscala4(0.55, 0.55, 0.55)
+            )
+        );
+
+    dibujarCuerpo(
+        texturaTierra,
+        modelTierra,
+        false
+    );
+
     requestAnimationFrame(render);
 }
+
 requestAnimationFrame(render);
