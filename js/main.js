@@ -1,5 +1,12 @@
-// Paso 10: Texturas Reales - Primer sol y tierra
-// Dejamos la textura procedural y usamos imagenes reales, ademas de reutilizar la geometria de la esfera para generar dos cuerpos celestes
+// Paso 11: Orbita, revolucion y jerarquia
+// Añadimos jerarquia (simulada) y aplicamos combinaciones de operaciones mas complejas para tener la orbita del planeta tierra
+
+// ¿Que es jerarquia?
+// Jerarquia de transformaciones implica que un objeto depende/hereda las transfomaciones de otro objeto
+    // En este caso, la tierra es hija del sol
+    // Si el objeto padre se traslada, el objeto hijo tambien lo hace
+    // Esto lo aplicaremos en la funcion render() al colocar el sol y la tierra
+// OJO, no estamos implementado una jerarquia explicita de objetos
 
 // Esto ya lo sabemos, consultar versiones anteriores del repositorio para hallar la explicacion mas detallada
 const canvas=document.getElementById("glCanvas"); 
@@ -55,11 +62,7 @@ function crearEsfera(radio,segmentosLatitud,segmentosLongitud){
     };
 }
 
-// Aqui estamos creando la geometria de la esfera
-const esfera=crearEsfera(1.0,32,48);                        // 1.0, 32, 48
-    // Solo UNA geometria
-    // La geometria y el objeto no son lo mismo
-    // El objeto se forma con la geometria + transformacion + textura + propiedades
+const esfera=crearEsfera(1.0,32,48);
 
 const vertexShaderSource = `#version 300 es 
 in vec3 aPosition; 
@@ -74,16 +77,9 @@ out vec3 vNormal;
 out vec2 vTexCoord; 
 
 void main() {
-    // Ahora dividimos el trabajo porque vamos a trabajar con varios objetos
     vec4 worldPosition = uModelMatrix * vec4(aPosition, 1.0);
-        // uModelMatrix contiene varias transformaciones (escala, rotacion y traslacion)
-        // Transforma el vértice desde las coordenadas locales de la esfera hasta las coordenadas del mundo
-    
     gl_Position = uProjectionMatrix * uViewMatrix * worldPosition;
-    
-    // Actualizamos las normales del vertice
     vNormal = normalize(mat3(uModelMatrix) * aNormal);
-
     vTexCoord = aTexCoord;
 }
 `;
@@ -101,12 +97,8 @@ uniform bool uEmissive;
 out vec4 outColor;
 
 void main() {
-    // Obtenemos el color respectivo segun la coordenada UV en formato RGB
     vec3 colorTextura = texture(uTexture, vTexCoord).rgb;
     
-    // Verifica si el objeto es "emissive", osea si emite luz
-        // Si lo hace, entonces la textura se aplica de forma limpia sin cambios ni aplicando sombreado
-        // Si no, se calcula el sombreado como siempre
     if (uEmissive) {
         outColor = vec4(colorTextura, 1.0);
         return;
@@ -118,7 +110,6 @@ void main() {
     float diffuse = max(dot(N, L), 0.0);
     float ambiente = 0.15;
 
-    // Modifica el color final en base a todo lo anterior
     vec3 colorFinal = colorTextura * (ambiente + diffuse);
 
     outColor = vec4(colorFinal, 1.0);
@@ -153,6 +144,7 @@ if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
 }
 
 gl.useProgram(program);
+
 
 const vao = gl.createVertexArray();
 gl.bindVertexArray(vao);
@@ -337,54 +329,31 @@ function matrizLookAt(eye,target,up){
     ]);
 }
 
-// Reemplazamos la funcion que genera la textura por una que cargue una textura
-function cargarTextura(url){ // Recibe la direccion de la textura
-    // Definimos un objeto de textura
+// Textura
+function cargarTextura(url){
     const textura=gl.createTexture();
-    // Vinculamos la textura
     gl.bindTexture(gl.TEXTURE_2D, textura);
-        // Indicamos que "textura" es un TEXTURE_2D
-        // Las operaciones que trabajen con TEXTURE_2D trabajaran con "textura"
 
-    // Pixel temporal mientras carga la imagen
     gl.texImage2D(
-        gl.TEXTURE_2D,                          // Tipo de textura 
-        0,                                      // Nivel de la textura, 0 es nivel base
-        gl.RGBA,                                // Formato interno con cuatro canales (red,green,blue,alfa)
-        1,                                      // Ancho
-        1,                                      // Alto
-        0,                                      // Borde
-        gl.RGBA,                                // Formato de los datos que proporcionaresmo
-        gl.UNSIGNED_BYTE,                       // Cada canal se representa mediante un entero sin signo de 8 bits
-        new Uint8Array([255, 255, 255, 255])    // Color temporal blanco (r,g,b,a)
+        gl.TEXTURE_2D,0,gl.RGBA,
+        1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,
+        new Uint8Array([255, 255, 255, 255])
     );
 
-    // Creamos una imagen de JS
     const imagen=new Image();   
 
-    // Cargamos la imagen, este proceso es asincrono
-    imagen.onload = () => { // Solo se ejecutar cuando la imagen este lista
-        // Volvemos a vincular la textura
+    imagen.onload = () => {
         gl.bindTexture(gl.TEXTURE_2D, textura);
-            // Esto es porque durante la creacion de la textura y la carga de onload pudo haber pasado algo de tiempo
-            // Otras partes del programa podrian haber vinculado otras texturas
-            // Es solo por si acaso
-
-        // Invertimos la imagen
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-            // Las coordenadas UV no pueden coincidir, si no hacemos esto la textura se carga al reves
-        
-        // Lo mismo que arriba, solo que ahora en lugar de cargar un fondo en blanco cargamos la textura
+
         gl.texImage2D(
             gl.TEXTURE_2D, 0, gl.RGBA,
             gl.RGBA, gl.UNSIGNED_BYTE,
             imagen
         );
 
-        // Generamos los mipmaps
         gl.generateMipmap(gl.TEXTURE_2D);
 
-        // Establecemos algunos ajustes
         gl.texParameteri(
             gl.TEXTURE_2D,
             gl.TEXTURE_MIN_FILTER,
@@ -446,22 +415,13 @@ gl.uniformMatrix4fv(projectionMatrixLocation,false,projectionMatrix);
 
 const lightDirection = normalizarVec3([-1.0, -0.5, -1.0]);
 gl.uniform3fv(lightDirectionLocation, lightDirection);
-
 gl.uniform1i(textureLoc, 0);
 
-// Funcion para dibujar un cuerpo celeste
 function dibujarCuerpo(textura, modelMatrix, emisivo) {
-    // ¿Recuerdas lo que haciamos al final de la funcion render() en pasos anteriores?
-    // Esto es exactamente lo mismo
-
-    // Activamos la textura
     gl.activeTexture(gl.TEXTURE0);
-    // Volvemos a vinvular la textura
     gl.bindTexture(gl.TEXTURE_2D, textura);
-
     gl.uniformMatrix4fv(modelMatrixLocation, false, modelMatrix);
     gl.uniform1i(emissiveLoc, emisivo ? 1 : 0);
-
     gl.drawElements(
         gl.TRIANGLES,
         esfera.indices.length,
@@ -470,18 +430,26 @@ function dibujarCuerpo(textura, modelMatrix, emisivo) {
     );
 }
 
-
 let tiempoAnterior = 0;
 let giroSol = 0;
 let giroTierra = 0;
+let anguloOrbitaTierra = 0;
+
+const velocidadGiroSol=0.10;
+const velocidadGiroTierra=0.80;
+const velocidadOrbitaTierra=0.25;
+
+const distanciaTierraSol=4.0;
 
 function render(ms) {
     const tiempo = ms * 0.001;
     const dt = tiempo - tiempoAnterior;
     tiempoAnterior = tiempo;
 
-    giroSol += 0.10 * dt;
-    giroTierra += 0.45 * dt;
+    giroSol += velocidadGiroSol * dt;
+    giroTierra += velocidadGiroTierra * dt;
+
+    anguloOrbitaTierra += velocidadOrbitaTierra * dt;
 
     gl.clear(
         gl.COLOR_BUFFER_BIT |
@@ -490,32 +458,39 @@ function render(ms) {
 
     gl.bindVertexArray(vao);
 
-    const modelSol =
-        multiplicarMat4(
-            matrizRotacionY(giroSol),
-            matrizEscala4(1.35, 1.35, 1.35)
-        );
+    const RSol=matrizRotacionY(giroSol);
+    const SSol=matrizEscala4(1.35,1.35,1.35);
 
-    dibujarCuerpo(
-        texturaSol,
-        modelSol,
-        true
+    const modelSol = multiplicarMat4(RSol,SSol);
+
+    dibujarCuerpo(texturaSol,modelSol,true);
+
+    // Para dibujar la tierra basicamente solo hacermos:
+    //      modelTierra = Rorbita * Tdistancia * Rpropia * S
+
+    const ROrbita=matrizRotacionY(anguloOrbitaTierra);              // Tambien aplica la traslacion
+    const TDistancia=matrizTraslacion4(distanciaTierraSol,0.0,0.0);
+    const RGiroTierra=matrizRotacionY(giroTierra);
+    const STierra=matrizEscala4(0.55,0.55,0.55);
+
+    const giroYEscala=multiplicarMat4(
+        RGiroTierra,    // Hace girar a la tierra sobre su propio eje
+        STierra         // Escala la tierra
+    );
+    const tierraLocal=multiplicarMat4(
+        TDistancia,     // Aleja a la tierra X unidades del origen
+        giroYEscala
     );
 
-    const modelTierra =
-        multiplicarMat4(
-            matrizTraslacion4(3.0, 0.0, 0.0),
-            multiplicarMat4(
-                matrizRotacionY(giroTierra),
-                matrizEscala4(0.55, 0.55, 0.55)
-            )
-        );
-
-    dibujarCuerpo(
-        texturaTierra,
-        modelTierra,
-        false
+    const modelTierra=multiplicarMat4(
+        ROrbita,        // Hace girar la tierra alrededor del origen 
+        tierraLocal
     );
+
+    dibujarCuerpo(texturaTierra,modelTierra,false);
+
+    // OJO, tierra no es hija del sol, osea si orbita alrededor de el, pero es solo porque el sol esta en el origen (0,0,0)
+        // La tierra en realidad gira alrededor del origen
 
     requestAnimationFrame(render);
 }
